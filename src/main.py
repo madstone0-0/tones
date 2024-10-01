@@ -1,108 +1,77 @@
-from sys import argv
 from pathlib import Path
-import shutil
+import signal
+from typing import Iterable
+from argparse import ArgumentParser
 from db_utils import (
     createDatabase,
-    storeTone,
-    storeAddressCouple,
-    readAddressCoupleFromAddress,
-    readTone,
 )
-from audio_utils import getAudioInfo, processAudiofile
-from audio_proc import printInfo
-from codec import (
-    decodeCouple64Bit,
-    encodeAddress32Bit,
-)
-from collections import Counter
 
-
-def stressTest(foldername: Path, db):
-    shutil.rmtree(db, ignore_errors=True)
-    for file in foldername.iterdir():
-        if file.is_dir():
-            stressTest(file, db)
-        if file.is_file() and file.suffix in [".wav", ".mp3", ".flac"]:
-            print(file)
-            info = getAudioInfo(str(file))
-            printInfo(info)
-            toneId = processAudiofile(info, db)
-            toneName = file.stem
-            storeTone(db, toneId, toneName)
-
-
-def loadFile(db, filename):
-    info = getAudioInfo(filename)
-    printInfo(info)
-    path: Path = Path(filename).resolve()
-
-    toneId, addressCouple = processAudiofile(info, db)
-    toneName = path.stem
-    storeAddressCouple(db, addressCouple)
-    print(f"Stored address-couple pairs in database for tone_id: {toneId}")
-    storeTone(db, toneId, toneName)
-
-
-def loadFolder(db, foldername):
-    # TODO Make concurrent
-    for file in foldername.iterdir():
-        if file.is_dir():
-            loadFolder(file, db)
-        if file.is_file() and file.suffix in [".wav", ".mp3", ".flac"]:
-            print(file)
-            info = getAudioInfo(str(file))
-            printInfo(info)
-            toneId = processAudiofile(info, db)
-            toneName = file.stem
-            storeTone(db, toneId, toneName)
-
-
-def searchFile(db, filename):
-    info = getAudioInfo(filename)
-    printInfo(info)
-    toneId, addressCouple = processAudiofile(info, db)
-    foundTones = []
-    for address, couple in addressCouple:
-        address = encodeAddress32Bit(address)
-
-        read = readAddressCoupleFromAddress(db, address)
-        if not read:
-            continue
-        a, c = read[0]
-        couple = decodeCouple64Bit(c)
-        id = couple[1]
-        tone = readTone(db, id)
-        foundTones.append(tone)
-
-    for tone in foundTones:
-        print(tone)
-
-    # Most common tone
-    count = Counter(foundTones)
-    common = count.most_common(1)[0][0][1]
-    print(common)
-    return common
+from search_load import searchFile, loadFile, loadFolders
 
 
 if __name__ == "__main__":
-    if len(argv) < 2:
-        print("Usage: python sound.py WAV OPTIONS")
-        exit(1)
 
-    filename = argv[1]
-    mode = argv[2]
+    def handleInt(sig, frame):
+        print("Exiting...")
+        raise KeyboardInterrupt
 
-    db = "test.db"
+    signal.signal(signal.SIGINT, handleInt)
+
+    parser = ArgumentParser(
+        prog="tones", description="CLI for tone adding and searching"
+    )
+
+    parser.add_argument(
+        "--mode",
+        metavar="mode",
+        required=True,
+        type=str,
+        help="Mode of operation: load, load_folder, search",
+    )
+
+    parser.add_argument(
+        "--filename",
+        metavar="filename",
+        required=True,
+        type=str,
+        help="Filename or foldername to load or search",
+    )
+
+    parser.add_argument(
+        "--verbose",
+        default=False,
+        action="store_true",
+        help="Verbose output",
+    )
+
+    args = parser.parse_args()
+
+    mode = args.mode
+    filename = args.filename
+    v = args.verbose
+
+    # db = "tones.db"
+    db = "songs.db"
 
     createDatabase(db, "./src/db/schema.sql")
+    # createDatabase(db, "/home/mads/projects/ML/audio/src/db/schema.sql")
+    res = None
 
     match mode:
         case "load":
-            loadFile(db, filename)
+            loadFile(db, filename, verbose=v)
         case "load_folder":
-            loadFolder(db, Path(filename))
+            loadFolders(db, Path(filename), verbose=v, maxWorkers=5)
         case "search":
-            searchFile(db, filename)
+            res = searchFile(db, filename, verbose=v)
         case _:
             print("Invalid mode")
             exit(1)
+
+    if res is not None:
+        if isinstance(res, Iterable):
+            print("Found tones:")
+            for item in res:
+                print(item[0])
+        else:
+            print(f"Tone: {res}")

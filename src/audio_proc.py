@@ -118,23 +118,67 @@ def quantizeFreq9Bit(freq):
     return quantized
 
 
-def generateSpectograph(info: WAVInfo, windowDuration=0.1, resolution_hz=10):
-    dtype = np.int16 if info.bitsPerSample == 16 else np.int32
-    dtype = np.dtype(dtype).newbyteorder("<")
+def bytesTo24Bit(data: Buffer):
+    # Ensure that the length of the byte_data is divisible by 3
+    extraBytes = len(data) % 3
+    if extraBytes != 0:
+        print(
+            f"Warning: Byte data length {len(data)} is not divisible by 3. Trimming {extraBytes} bytes."
+        )
+        data = data[
+            :-extraBytes
+        ]  # Trim the extra bytes# Convert the byte data into a NumPy array of 3-byte chunks
+    bs = np.frombuffer(data, dtype=np.uint8).reshape(-1, 3)
 
-    data = np.frombuffer(
-        info.data,
-        dtype=dtype,
+    # Convert to 32-bit integers while preserving sign
+    intData = (
+        bs[:, 0].astype(np.int32)
+        | (bs[:, 1].astype(np.int32) << 8)
+        | (bs[:, 2].astype(np.int32) << 16)
     )
+
+    # Handle negative values (24-bit signed integers)
+    intData = np.where(intData & 0x800000, intData | ~0xFFFFFF, intData)
+
+    return intData
+
+
+def generateSpectograph(
+    info: WAVInfo, windowDuration=0.1, resolution_hz=10, verbose=False
+):
+    match info.bitsPerSample:
+        case 16:
+            dtype = np.int16
+        case 32:
+            dtype = np.int32
+        case 64:
+            dtype = np.int64
+        case 8:
+            dtype = np.int8
+        case 24:
+            data = bytesTo24Bit(info.data)
+        case _:
+            raise ValueError(f"Unsupported bits per sample: {info.bitsPerSample}")
+
+    if info.bitsPerSample != 24:
+        dtype = np.dtype(dtype).newbyteorder("<")
+        # Check if data is a multiple of dtype size
+        if len(info.data) % dtype.itemsize != 0:
+            print(
+                f"Warning: Data length {len(info.data)} is not a multiple of {dtype.itemsize}. Trimming the last few bytes."
+            )
+            info.data = info.data[: len(info.data) - (len(info.data) % dtype.itemsize)]
+        data = np.frombuffer(info.data, dtype=dtype)
 
     # Window function application of fft to each 0.1 part of the data
     windowSize = int(windowDuration * info.sampleFreq)
     overlap = int(windowSize * 0.5)
 
-    print(f"""
-    Window duration: {windowDuration}
-    Window size: {windowSize}
-    Overlap: {overlap}""")
+    if verbose:
+        print(f"""
+        Window duration: {windowDuration}
+        Window size: {windowSize}
+        Overlap: {overlap}""")
 
     freq, times, Zxx = stft(
         data,
@@ -145,19 +189,20 @@ def generateSpectograph(info: WAVInfo, windowDuration=0.1, resolution_hz=10):
         boundary=None,
     )
 
-    print(f"""
-    Number of frequencies: {len(freq)}
-    Number of time points: {len(times)}
-    Number of Zxx points: {len(Zxx)}
-    Shape of Zxx: {Zxx.shape}
-    """)
+    if verbose:
+        print(f"""
+        Number of frequencies: {len(freq)}
+        Number of time points: {len(times)}
+        Number of Zxx points: {len(Zxx)}
+        Shape of Zxx: {Zxx.shape}
+        """)
     times = (times * 1000).astype(int)
     # freq = quantizeFreqs(freq, resolution_hz=resolution_hz)
     freq = np.array([quantizeFreq9Bit(f) for f in freq])
     return freq, times, abs(Zxx), data, overlap
 
 
-def downsample(info: WAVInfo, factor: int) -> WAVInfo:
+def downsample(info: WAVInfo, factor: int, verbose=False) -> WAVInfo:
     if factor <= 1:
         return info
 
@@ -168,7 +213,8 @@ def downsample(info: WAVInfo, factor: int) -> WAVInfo:
     # cutoff = newSampleFreq / 2
     info = lowpassFilter(info, 5000)
 
-    print(f"Downsampling by factor of {factor}...")
+    if verbose:
+        print(f"Downsampling by factor of {factor}...")
 
     # Convert data from bytes to numpy array
     data = np.frombuffer(info.data, dtype=np.int16)
@@ -185,15 +231,17 @@ def downsample(info: WAVInfo, factor: int) -> WAVInfo:
         info.sampleFreq * info.bitsPerSample * (1 if info.mono else 2) // 8
     )  # Correctly calculate bytes per second
 
-    print("Downsampling complete.")
-    printInfo(info)
+    if verbose:
+        print("Downsampling complete.")
+        printInfo(info)
     return info
 
 
-def downmixToMono(info: WAVInfo) -> WAVInfo:
+def downmixToMono(info: WAVInfo, verbose=False) -> WAVInfo:
     if info.mono:
         return info
-    print("Downmixing stereo to mono...")
+    if verbose:
+        print("Downmixing stereo to mono...")
 
     if info.bitsPerSample == 16:
         dtype = np.int16
@@ -201,13 +249,27 @@ def downmixToMono(info: WAVInfo) -> WAVInfo:
         dtype = np.int32
     elif info.bitsPerSample == 64:
         dtype = np.int64
+    elif info.bitsPerSample == 8:
+        dtype = np.int8
+    elif info.bitsPerSample == 24:
+        dtype = np.int32
+        data = bytesTo24Bit(info.data)
     else:
         raise ValueError(f"Unsupported bits per sample: {info.bitsPerSample}")
 
-    data = np.frombuffer(info.data, dtype=dtype)
+    if info.bitsPerSample != 24:
+        # Check if data is a multiple of dtype size
+        dsize = np.dtype(dtype).itemsize
+        if len(info.data) % dsize != 0:
+            print(
+                f"Warning: Data length {len(info.data)} is not a multiple of {dsize}. Trimming the last few bytes."
+            )
+            info.data = info.data[: len(info.data) - (len(info.data) % dsize)]
+        data = np.frombuffer(info.data, dtype=dtype)
 
     if len(data) % 2 != 0:
-        print("Warning: Data length is not even, removing the last sample...")
+        if verbose:
+            print("Warning: Data length is not even, removing the last sample...")
         data = data[:-1]  # Remove the last sample to make it even
 
     # Downmix stereo to mono
@@ -219,19 +281,20 @@ def downmixToMono(info: WAVInfo) -> WAVInfo:
     info.bytesSec //= 2
     info.blockAlign //= 2
 
-    print("Downmixing complete.")
-    printInfo(info)
+    if verbose:
+        print("Downmixing complete.")
+        printInfo(info)
     return info
 
 
-def lowpassFilter(info: WAVInfo, cutoff: float) -> WAVInfo:
-    print(f"Applying lowpass filter with cutoff frequency of {cutoff} Hz...")
-    print(f"""
-        Cutoff: {cutoff}
-          """)
+def lowpassFilter(info: WAVInfo, cutoff: float, verbose=False) -> WAVInfo:
+    if verbose:
+        print(f"Applying lowpass filter with cutoff frequency of {cutoff} Hz...")
 
     # Design the Butterworth filter
     nyquist = 0.5 * info.sampleFreq
+    if nyquist == 0:
+        return info
     normal_cutoff = cutoff / nyquist
     b, a = butter(4, normal_cutoff, btype="low", analog=False)
 
@@ -247,16 +310,17 @@ def lowpassFilter(info: WAVInfo, cutoff: float) -> WAVInfo:
     )  # Ensure values are within valid range
     info.data = filtered_data.astype(np.int16).tobytes()
 
-    print("Lowpass filter complete.")
-    printInfo(info)
+    if verbose:
+        print("Lowpass filter complete.")
+        printInfo(info)
     return info
 
 
-def preprocess(info: WAVInfo, downmix=True, downsampleFactor=1):
+def preprocess(info: WAVInfo, downmix=True, downsampleFactor=1, verbose=False):
     if downmix:
-        info = downmixToMono(info)
+        info = downmixToMono(info, verbose=verbose)
     if downsampleFactor > 1:
-        info = downsample(info, downsampleFactor)
+        info = downsample(info, downsampleFactor, verbose=verbose)
 
     return info
 

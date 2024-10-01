@@ -2,3 +2,4 @@ test_audio/
 .mypy_cache/
 *.db
 __pycache__
+*.log

@@ -6,22 +6,24 @@ from collections import deque
 from hashlib import sha256
 import ffmpeg
 from visualize import visualizeStrongestFrequencies, visualizeSong, visualizeSpectograph
-from db_utils import (
-    storeAddressCouple,
-)
 from codec import decodeAddress32Bit, decodeCouple64Bit
 from audio_proc import WAVInfo, getWAVInfo, generateSpectograph, preprocess
 
 
 def getAudioInfo(filename: str) -> WAVInfo:
-    if filename.endswith(".wav"):
-        with open(filename, mode="rb") as f:
-            return getWAVInfo(f.read())
-    process = (
-        ffmpeg.input(filename)
-        .output("pipe:", format="wav")
-        .run(capture_stdout=True, capture_stderr=True)
-    )
+    # if filename.endswith(".wav"):
+    #     with open(filename, mode="rb") as f:
+    #         return getWAVInfo(f.read())
+    try:
+        process = (
+            ffmpeg.input(filename)
+            .output("pipe:", format="wav")
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except ffmpeg.Error as e:
+        print("stdout:", e.stdout.decode("utf8"))
+        print("stderr:", e.stderr.decode("utf8"))
+        raise e
     return getWAVInfo(process[0])
 
 
@@ -88,7 +90,7 @@ def quantizeFreqs(freqs, resolution_hz=1):
     return np.power(2, quant_cents / 1200)
 
 
-def extractFrequencies(Zxx, freq, coef=0.5, bands=6):
+def extractFrequencies(Zxx, freq, coef=0.5, bands=6, verbose=False):
     binsN = len(Zxx[0])
     ranges = logarithmicSplits(binsN, bands)
 
@@ -109,10 +111,12 @@ def extractFrequencies(Zxx, freq, coef=0.5, bands=6):
         keep = np.pad(keep, (0, bands - len(keep)), "constant")
         freqs.append(keep)
     freqs = np.array(freqs)
-    print(f"""
-    Number of bins: {binsN}
-    Number of bands: {bands}
-    Shape of freqs: {freqs.shape}""")
+
+    if verbose:
+        print(f"""
+        Number of bins: {binsN}
+        Number of bands: {bands}
+        Shape of freqs: {freqs.shape}""")
 
     return freqs
 
@@ -199,15 +203,14 @@ def genToneId(info):
     return int.from_bytes(hash[:4], "big")
 
 
-def processAudiofile(info: WAVInfo, db, visualize=False):
+def processAudiofile(
+    info: WAVInfo, db, toneId, visualize=False, verbose=False, targetRes=50
+):
     if visualize:
         visualizeSong(info)
 
-    # Generate max 32bit integer for toneId using the first 32 bits of the hash of the audio data
-    toneId = genToneId(info)
-
-    info = preprocess(info, downmix=True, downsampleFactor=4)
-    windowSize = int(info.sampleFreq / 10.7)
+    info = preprocess(info, downmix=True, downsampleFactor=4, verbose=verbose)
+    windowSize = int(info.sampleFreq / targetRes)
     windowDuration = windowSize / info.sampleFreq
     freq, times, Zxx, data, overlap = generateSpectograph(info, windowDuration)
 
@@ -216,7 +219,7 @@ def processAudiofile(info: WAVInfo, db, visualize=False):
             freq, times, Zxx, data, overlap, windowSize, info.sampleFreq
         )
 
-    strongest = extractFrequencies(Zxx, freq)
+    strongest = extractFrequencies(Zxx, freq, verbose=verbose)
     t = []
     for timeIdx, freqComp in enumerate(strongest):
         time = times[timeIdx]
@@ -235,4 +238,4 @@ def processAudiofile(info: WAVInfo, db, visualize=False):
     orderedFreqs = generateTimeFreqOrderRelation(times, freqs)
     targetZones = createTargetZones(orderedFreqs)
     addressCouple = generateAddress(targetZones, orderedFreqs, times, toneId)
-    return toneId, addressCouple
+    return addressCouple
