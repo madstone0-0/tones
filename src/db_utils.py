@@ -1,11 +1,13 @@
-import sqlite3 as sql
+# import sqlite3 as sql
+import psycopg as sql
 from codec import encodeAddress32Bit, encodeCouple64Bit
 
 TIMEOUT = 50
 
 
 def createDatabase(db, schema):
-    with sql.connect(db, timeout=TIMEOUT) as conn:
+    with sql.connect(db) as conn:
+        print(f"Connected to {db} info: {conn}")
         with open(schema) as f:
             schema = f.readlines()
 
@@ -16,69 +18,69 @@ def createDatabase(db, schema):
 
 
 def storeTone(db, toneId, toneName, verbose=True):
-    with sql.connect(db, timeout=TIMEOUT) as conn:
+    with sql.connect(db) as conn:
         print(f"Storing tone {toneId} with name {toneName}")
-        cursor = conn.cursor()
-        try:
-            cursor.execute(
-                "INSERT INTO tones (toneId, name) VALUES (?, ?)", (toneId, toneName)
-            )
-        except sql.IntegrityError:
-            print("Duplicate tone")
-        except Exception as e:
-            raise e
-            # return
-
-        conn.commit()
-
-
-def storeAddressCouple(db, addressCouple):
-    with sql.connect(db, timeout=TIMEOUT) as conn:
-        cursor = conn.cursor()
-        for address, couple in addressCouple:
+        with conn.cursor() as cursor:
             try:
                 cursor.execute(
-                    "INSERT INTO addresses (address, couple) VALUES (?, ?)",
-                    (encodeAddress32Bit(address), encodeCouple64Bit(couple)),
+                    "INSERT INTO tone (toneId, name) VALUES (%s, %s)",
+                    (toneId, toneName),
                 )
-            except sql.IntegrityError:
-                # print("Duplicate address")
-                continue
+            # except sql.IntegrityError:
+            #     print("Duplicate tone")
+            except Exception as e:
+                raise e
                 # return
 
         conn.commit()
 
 
+def storeAddressCouple(db, addressCouple):
+    with sql.connect(db) as conn:
+        with conn.cursor() as cursor:
+            for address, couple in addressCouple:
+                try:
+                    cursor.execute(
+                        "INSERT INTO address_couple (address, couple) VALUES (%s, %s)",
+                        (encodeAddress32Bit(address), encodeCouple64Bit(couple)),
+                    )
+
+                except sql.errors.UniqueViolation:
+                    continue
+
+            conn.commit()
+
+
 def doesToneExist(db, toneId):
-    with sql.connect(db, timeout=TIMEOUT) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tones WHERE toneId = ?", [toneId])
-        return cursor.fetchone() is not None
+    with sql.connect(db) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM tone WHERE toneId = %s", [toneId])
+            return cursor.fetchone() is not None
 
 
 def readAllAddressCouple(db):
     with sql.connect(db) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM addresses")
-        return cursor.fetchall()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM address_couple")
+            return cursor.fetchall()
 
 
 def readAddressCoupleFromAddress(db, address):
     with sql.connect(db) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM addresses WHERE address = ?", [address])
-        return cursor.fetchall()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM address_couple WHERE address = %s", [address])
+            return cursor.fetchall()
 
 
 def readTone(db, toneId):
     with sql.connect(db) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tones WHERE toneId = ?", [toneId])
-        return cursor.fetchone()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM tone WHERE toneId = %s", [toneId])
+            return cursor.fetchone()
 
 
 def readTones(db):
     with sql.connect(db) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tones")
-        return cursor.fetchall()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM tone")
+            return cursor.fetchall()

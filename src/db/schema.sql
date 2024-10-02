@@ -1,3 +1,8 @@
-CREATE TABLE IF NOT EXISTS addresses (address BIGINT PRIMARY KEY, couple BIGINT);
+--create database tones;
+drop table if exists address_couple;
 
-CREATE TABLE IF NOT EXISTS tones (toneId BIGINT PRIMARY KEY, name TEXT);
+drop table if exists tone;
+
+create table if not exists address_couple (address bigint, couple bigint);
+
+create table if not exists tone (toneId bigint primary key, name character varying);

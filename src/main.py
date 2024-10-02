@@ -2,10 +2,8 @@ from pathlib import Path
 import signal
 from typing import Iterable
 from argparse import ArgumentParser
-from db_utils import (
-    createDatabase,
-)
 
+from db_utils import createDatabase
 from search_load import searchFile, loadFile, loadFolders
 
 
@@ -51,7 +49,8 @@ if __name__ == "__main__":
     v = args.verbose
 
     # db = "tones.db"
-    db = "songs.db"
+    # db = "songs.db"
+    db = "dbname=tones user=mads"
 
     createDatabase(db, "./src/db/schema.sql")
     # createDatabase(db, "/home/mads/projects/ML/audio/src/db/schema.sql")
