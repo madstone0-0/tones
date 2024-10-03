@@ -21,7 +21,7 @@ from multiprocessing import Queue
 # from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import as_completed
 
-TARGET_RES = 200
+TARGET_RES = 100
 # TARGET_RES = 10.7
 
 
@@ -89,13 +89,17 @@ def loadFolders(db, foldername, maxWorkers=6, verbose=False):
             print(f"Failed: {failed}")
 
 
-def isMatchingZone(couple, decoededCouple, tolerance=(0.1, 0.1)):
-    toneTime, toneFreq = couple
-    dbTime, dbFreq = decoededCouple
+def isMatchingZone(
+    couple, decoededCouple, address, decodedAddress, timeFreqTol=(0.1, 0.1)
+):
+    toneTime, _ = couple
+    dbTime, _ = decoededCouple
+    _, toneFreq, _ = address
+    _, dbFreq, _ = decodedAddress
 
     if (
-        abs(toneTime - dbTime) <= tolerance[0]
-        and abs(toneFreq - dbFreq) <= tolerance[1]
+        abs(toneTime - dbTime) <= timeFreqTol[0]
+        and abs(toneFreq - dbFreq) <= timeFreqTol[1]
     ):
         return True
 
@@ -187,14 +191,20 @@ def searchFile(db, filename, cutoff=0.50, verbose=False):
 
     # Find the matching couples in the database for all fingerprints
     for address, couple in addressCouple:
-        address = encodeAddress32Bit(address)
+        if verbose:
+            print(f"Searching for: {address}")
+            print(f"Encoded: {address}")
 
+        address = encodeAddress32Bit(address)
         read = readAddressCoupleFromAddress(db, address)
         if not read:
             continue
 
+        address = decodeAddress32Bit(address)
+
         for a, c in read:
             c = decodeCouple64Bit(c)
+            a = decodeAddress32Bit(a)
             id = c[1]
             tone = readTone(db, id)
 
@@ -202,9 +212,9 @@ def searchFile(db, filename, cutoff=0.50, verbose=False):
                 foundTones[id] = {"tone": tone, "common": 0}
                 foundDB[id] = []
 
-            if isMatchingZone(couple, c):
+            if isMatchingZone(couple, c, address, a, timeFreqTol=timeFreqTol):
                 foundTones[id]["common"] += 1
-                foundDB[id].append((decodeAddress32Bit(a), c))
+                foundDB[id].append((a, c))
 
     coherencyRes = tryCoherency(
         addressCouple, foundDB, foundTones, numTargetZones, verbose=verbose
