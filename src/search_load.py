@@ -1,6 +1,7 @@
 from concurrent.futures.process import ProcessPoolExecutor
 from pathlib import Path
 from typing import Counter
+import psycopg as sql
 
 from db_utils import (
     doesToneExist,
@@ -121,12 +122,18 @@ def maxTimeCoherentNotes(addressCouple, dbAddressCouple, tolerance=0.1):
 
 
 def tryCoherency(
-    addressCouple, foundDB, foundTones, numTargetZones, coeff=0.5, verbose=False
+    addressCouple,
+    foundDB,
+    foundTones,
+    numTargetZones,
+    coeff=0.5,
+    verbose=False,
+    tol=0.1,
 ):
     maxCoherency = 0
     bestSong = None
     for id in foundDB:
-        maxTime = maxTimeCoherentNotes(addressCouple, foundDB[id])
+        maxTime = maxTimeCoherentNotes(addressCouple, foundDB[id], tolerance=tol)
         if not maxTime:
             continue
         if verbose:
@@ -174,7 +181,15 @@ def tryMatchRatios(foundTones, numTargetZones, cutoff, verbose=False):
     return filtered
 
 
-def searchFile(db, filename, cutoff=0.50, verbose=False):
+def searchFile(
+    db,
+    filename,
+    cutoff=0.50,
+    verbose=False,
+    coherencyTol=0.1,
+    coeff=0.5,
+    timeFreqTol=(0.1, 0.1),
+):
     info = getAudioInfo(filename)
 
     if verbose:
@@ -217,7 +232,13 @@ def searchFile(db, filename, cutoff=0.50, verbose=False):
                 foundDB[id].append((a, c))
 
     coherencyRes = tryCoherency(
-        addressCouple, foundDB, foundTones, numTargetZones, verbose=verbose
+        addressCouple,
+        foundDB,
+        foundTones,
+        numTargetZones,
+        verbose=verbose,
+        coeff=coeff,
+        tol=coherencyTol,
     )
     if coherencyRes:
         return coherencyRes

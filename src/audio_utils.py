@@ -238,4 +238,9 @@ def processAudiofile(
     orderedFreqs = generateTimeFreqOrderRelation(times, freqs)
     targetZones = createTargetZones(orderedFreqs)
     addressCouple = generateAddress(targetZones, orderedFreqs, times, toneId)
+
+    if verbose:
+        print(f"Number of target zones: {len(targetZones)}")
+        print(f"Generated addressCouple: {addressCouple}")
+
     return addressCouple

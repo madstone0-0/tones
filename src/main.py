@@ -67,13 +67,20 @@ if __name__ == "__main__":
                 createDatabase(db, "./src/db/schema.sql")
             loadFolders(db, Path(filename), verbose=v, maxWorkers=5)
         case "search":
-            res = searchFile(db, filename, verbose=v)
+            res = searchFile(
+                db,
+                filename,
+                verbose=v,
+                coeff=10,
+                timeFreqTol=(0.5, 0.5),
+                coherencyTol=2.5,
+            )
         case _:
             print("Invalid mode")
             exit(1)
 
     if res is not None:
-        if isinstance(res, Iterable):
+        if isinstance(res, Iterable) and not isinstance(res, str):
             print("Found tones:")
             for item in res:
                 print(item[0])
