@@ -48,12 +48,8 @@ if __name__ == "__main__":
     filename = args.filename
     v = args.verbose
 
-    # db = "tones.db"
-    # db = "songs.db"
     db = "dbname=tones user=mads"
 
-    createDatabase(db, "./src/db/schema.sql")
-    # createDatabase(db, "/home/mads/projects/ML/audio/src/db/schema.sql")
     res = None
 
     match mode:

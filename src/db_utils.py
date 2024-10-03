@@ -17,45 +17,82 @@ def createDatabase(db, schema):
         conn.commit()
 
 
-def storeTone(db, toneId, toneName, verbose=True):
-    with sql.connect(db) as conn:
-        print(f"Storing tone {toneId} with name {toneName}")
-        with conn.cursor() as cursor:
+def storeTone(conn, toneId, toneName, verbose=True):
+    print(f"Storing tone {toneId} with name {toneName}")
+    with conn.cursor() as cursor:
+        try:
+            cursor.execute(
+                "INSERT INTO tone (toneId, name) VALUES (%s, %s)",
+                (toneId, toneName),
+            )
+        # except sql.IntegrityError:
+        #     print("Duplicate tone")
+        except Exception as e:
+            raise e
+            # return
+
+    conn.commit()
+
+
+# def storeTone(db, toneId, toneName, verbose=True):
+#     with sql.connect(db) as conn:
+#         print(f"Storing tone {toneId} with name {toneName}")
+#         with conn.cursor() as cursor:
+#             try:
+#                 cursor.execute(
+#                     "INSERT INTO tone (toneId, name) VALUES (%s, %s)",
+#                     (toneId, toneName),
+#                 )
+#             # except sql.IntegrityError:
+#             #     print("Duplicate tone")
+#             except Exception as e:
+#                 raise e
+#                 # return
+#
+#         conn.commit()
+
+
+def storeAddressCouple(conn, addressCouple):
+    with conn.cursor() as cursor:
+        for address, couple in addressCouple:
             try:
                 cursor.execute(
-                    "INSERT INTO tone (toneId, name) VALUES (%s, %s)",
-                    (toneId, toneName),
+                    "INSERT INTO address_couple (address, couple) VALUES (%s, %s)",
+                    (encodeAddress32Bit(address), encodeCouple64Bit(couple)),
                 )
-            # except sql.IntegrityError:
-            #     print("Duplicate tone")
-            except Exception as e:
-                raise e
-                # return
+            except sql.errors.UniqueViolation:
+                continue
 
         conn.commit()
 
 
-def storeAddressCouple(db, addressCouple):
-    with sql.connect(db) as conn:
-        with conn.cursor() as cursor:
-            for address, couple in addressCouple:
-                try:
-                    cursor.execute(
-                        "INSERT INTO address_couple (address, couple) VALUES (%s, %s)",
-                        (encodeAddress32Bit(address), encodeCouple64Bit(couple)),
-                    )
+# def storeAddressCouple(db, addressCouple):
+#     with sql.connect(db) as conn:
+#         with conn.cursor() as cursor:
+#             for address, couple in addressCouple:
+#                 try:
+#                     cursor.execute(
+#                         "INSERT INTO address_couple (address, couple) VALUES (%s, %s)",
+#                         (encodeAddress32Bit(address), encodeCouple64Bit(couple)),
+#                     )
+#
+#                 except sql.errors.UniqueViolation:
+#                     continue
+#
+#             conn.commit()
 
-                except sql.errors.UniqueViolation:
-                    continue
 
-            conn.commit()
+def doesToneExist(conn, toneId):
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM tone WHERE toneId = %s", [toneId])
+        return cursor.fetchone() is not None
 
 
-def doesToneExist(db, toneId):
-    with sql.connect(db) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM tone WHERE toneId = %s", [toneId])
-            return cursor.fetchone() is not None
+# def doesToneExist(db, toneId):
+#     with sql.connect(db) as conn:
+#         with conn.cursor() as cursor:
+#             cursor.execute("SELECT * FROM tone WHERE toneId = %s", [toneId])
+#             return cursor.fetchone() is not None
 
 
 def readAllAddressCouple(db):

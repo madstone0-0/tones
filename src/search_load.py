@@ -34,19 +34,20 @@ def loadFile(db, filename, verbose=False):
 
     # Generate max 32bit integer for toneId using the first 32 bits of the hash of the audio data
     toneId = genToneId(info)
-    if doesToneExist(db, toneId):
-        return f"Tone {toneId} already exists in database"
+    with sql.connect(db) as conn:
+        if doesToneExist(conn, toneId):
+            return f"Tone {toneId} already exists in database"
 
-    addressCouple = processAudiofile(
-        info, db, toneId, verbose=verbose, targetRes=TARGET_RES
-    )
-    toneName = path.stem
-    storeAddressCouple(db, addressCouple)
-    try:
-        storeTone(db, toneId, toneName)
-    except Exception as e:
-        return f"Error: {e}"
-    return f"Stored address-couple pairs in database for tone_id: {toneId}"
+        addressCouple = processAudiofile(
+            info, db, toneId, verbose=verbose, targetRes=TARGET_RES
+        )
+        toneName = path.stem
+        storeAddressCouple(conn, addressCouple)
+        try:
+            storeTone(conn, toneId, toneName)
+        except Exception as e:
+            return f"Error: {e}"
+        return f"Stored address-couple pairs in database for tone_id: {toneId}"
 
 
 def findFiles(foldername: Path, fileQueue: Queue):
