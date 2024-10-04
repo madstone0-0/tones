@@ -22,7 +22,7 @@ from multiprocessing import Queue
 # from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import as_completed
 
-TARGET_RES = 100
+TARGET_RES = 200
 # TARGET_RES = 10.7
 
 

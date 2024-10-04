@@ -55,6 +55,7 @@ if __name__ == "__main__":
     overwrite = args.overwrite
 
     db = "dbname=tones user=mads"
+    # db = "dbname=songs user=mads"
 
     res = None
 
